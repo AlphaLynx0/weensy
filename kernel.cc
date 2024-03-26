@@ -310,7 +310,12 @@ uintptr_t syscall(regstate* regs) {
         schedule();             // does not return
 
     case SYSCALL_PAGE_ALLOC:
-        return syscall_page_alloc(current->regs.reg_rdi);
+        // only allow page alloc if addr is in the address space for processes
+        if (current->regs.reg_rdi >= PROC_START_ADDR && current->regs.reg_rdi < MEMSIZE_PHYSICAL) {
+            return syscall_page_alloc(current->regs.reg_rdi);
+        } else {
+            return -1;
+        }
 
     default:
         panic("Unexpected system call %ld!\n", regs->reg_rax);
