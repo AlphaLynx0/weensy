@@ -151,7 +151,18 @@ void process_setup(pid_t pid, const char* program_name) {
     init_process(&ptable[pid], 0);
 
     // initialize process page table
-    ptable[pid].pagetable = kernel_pagetable;
+    x86_64_pagetable* pagetable = kalloc_pagetable();
+
+    // copy kernel pagetable mappings to new process pagetable
+    vmiter p_it(pagetable);
+    for (vmiter k_it(kernel_pagetable); k_it.va() < PROC_START_ADDR; k_it += PAGESIZE) {
+        if(k_it.present()) {
+            p_it.map(k_it.va(), k_it.perm());
+        }
+        p_it += PAGESIZE;
+    }
+
+    ptable[pid].pagetable = pagetable;
 
     // obtain reference to the program image
     program_image pgm(program_name);
@@ -166,6 +177,7 @@ void process_setup(pid_t pid, const char* program_name) {
             // address is currently free.)
             assert(physpages[a / PAGESIZE].refcount == 0);
             ++physpages[a / PAGESIZE].refcount;
+            vmiter(pagetable, a).map(a, PTE_P | PTE_W | PTE_U);
         }
     }
 
@@ -186,6 +198,7 @@ void process_setup(pid_t pid, const char* program_name) {
     assert(physpages[stack_addr / PAGESIZE].refcount == 0);
     ++physpages[stack_addr / PAGESIZE].refcount;
     ptable[pid].regs.reg_rsp = stack_addr + PAGESIZE;
+    vmiter(ptable[pid].pagetable, stack_addr).map(stack_addr, PTE_P | PTE_W | PTE_U);
 
     // mark process as runnable
     ptable[pid].state = P_RUNNABLE;
@@ -334,6 +347,7 @@ uintptr_t syscall(regstate* regs) {
 int syscall_page_alloc(uintptr_t addr) {
     assert(physpages[addr / PAGESIZE].refcount == 0);
     ++physpages[addr / PAGESIZE].refcount;
+    vmiter(current->pagetable, addr).map(addr, PTE_P | PTE_W | PTE_U);
     memset((void*) addr, 0, PAGESIZE);
     return 0;
 }
