@@ -194,7 +194,7 @@ void process_setup(pid_t pid, const char* program_name) {
 
     // allocate and map stack segment
     // Compute process virtual address for stack page
-    uintptr_t stack_addr = PROC_START_ADDR + PROC_SIZE * pid - PAGESIZE;
+    uintptr_t stack_addr = MEMSIZE_VIRTUAL - PAGESIZE;
     // The handout code requires that the corresponding physical address
     // is currently free.
     ptable[pid].regs.reg_rsp = stack_addr + PAGESIZE;
@@ -328,7 +328,7 @@ uintptr_t syscall(regstate* regs) {
 
     case SYSCALL_PAGE_ALLOC:
         // only allow page alloc if addr is in the address space for processes
-        if (current->regs.reg_rdi >= PROC_START_ADDR && current->regs.reg_rdi < MEMSIZE_PHYSICAL) {
+        if (current->regs.reg_rdi >= PROC_START_ADDR && current->regs.reg_rdi < MEMSIZE_VIRTUAL) {
             return syscall_page_alloc(current->regs.reg_rdi);
         } else {
             return -1;
