@@ -151,18 +151,16 @@ void process_setup(pid_t pid, const char* program_name) {
     init_process(&ptable[pid], 0);
 
     // initialize process page table
-    x86_64_pagetable* pagetable = kalloc_pagetable();
+    ptable[pid].pagetable = kalloc_pagetable();
 
     // copy kernel pagetable mappings to new process pagetable
-    vmiter p_it(pagetable);
+    vmiter p_it(ptable[pid].pagetable);
     for (vmiter k_it(kernel_pagetable); k_it.va() < PROC_START_ADDR; k_it += PAGESIZE) {
         if(k_it.present()) {
             p_it.map(k_it.va(), k_it.perm());
         }
         p_it += PAGESIZE;
     }
-
-    ptable[pid].pagetable = pagetable;
 
     // obtain reference to the program image
     program_image pgm(program_name);
