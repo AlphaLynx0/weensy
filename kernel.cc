@@ -175,18 +175,22 @@ void process_setup(pid_t pid, const char* program_name) {
             // `a` is the process virtual address for the next code or data page
             // (The handout code requires that the corresponding physical
             // address is currently free.)
-            assert(physpages[a / PAGESIZE].refcount == 0);
-            ++physpages[a / PAGESIZE].refcount;
-            vmiter(pagetable, a).map(a, PTE_P | PTE_W | PTE_U);
+            void* page = kalloc(PAGESIZE);
+            if (page) {
+                vmiter(ptable[pid].pagetable, a).map(page, PTE_P | PTE_W | PTE_U);
+                memset(page, 0 , PAGESIZE);
+            }
         }
     }
 
+    set_pagetable(ptable[pid].pagetable);
     // initialize data in loadable segments
     for (auto seg = pgm.begin(); seg != pgm.end(); ++seg) {
         memset((void*) seg.va(), 0, seg.size());
         memcpy((void*) seg.va(), seg.data(), seg.data_size());
     }
 
+    set_pagetable(kernel_pagetable);
     // mark entry point
     ptable[pid].regs.reg_rip = pgm.entry();
 
@@ -195,10 +199,12 @@ void process_setup(pid_t pid, const char* program_name) {
     uintptr_t stack_addr = PROC_START_ADDR + PROC_SIZE * pid - PAGESIZE;
     // The handout code requires that the corresponding physical address
     // is currently free.
-    assert(physpages[stack_addr / PAGESIZE].refcount == 0);
-    ++physpages[stack_addr / PAGESIZE].refcount;
     ptable[pid].regs.reg_rsp = stack_addr + PAGESIZE;
-    vmiter(ptable[pid].pagetable, stack_addr).map(stack_addr, PTE_P | PTE_W | PTE_U);
+    void* page = kalloc(PAGESIZE);
+    if (page) {
+        vmiter(ptable[pid].pagetable, stack_addr).map(page, PTE_P | PTE_W | PTE_U);
+        memset(page, 0 , PAGESIZE);
+    }
 
     // mark process as runnable
     ptable[pid].state = P_RUNNABLE;
@@ -345,11 +351,14 @@ uintptr_t syscall(regstate* regs) {
 //    in `u-lib.hh` (but in the handout code, it does not).
 
 int syscall_page_alloc(uintptr_t addr) {
-    assert(physpages[addr / PAGESIZE].refcount == 0);
-    ++physpages[addr / PAGESIZE].refcount;
-    vmiter(current->pagetable, addr).map(addr, PTE_P | PTE_W | PTE_U);
-    memset((void*) addr, 0, PAGESIZE);
-    return 0;
+    void* page = kalloc(PAGESIZE);
+    if (page) {
+        vmiter(current, addr).map(page, PTE_P | PTE_W | PTE_U);
+        memset(page, 0 , PAGESIZE);
+        return 0;
+    } else {
+        return -1;
+    }
 }
 
 
