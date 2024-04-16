@@ -294,6 +294,7 @@ void exception(regstate* regs) {
 //    Note that hardware interrupts are disabled when the kernel is running.
 
 int syscall_page_alloc(uintptr_t addr);
+pid_t syscall_fork();
 
 uintptr_t syscall(regstate* regs) {
     // Copy the saved registers into the `current` process descriptor.
@@ -334,6 +335,9 @@ uintptr_t syscall(regstate* regs) {
             return -1;
         }
 
+    case SYSCALL_FORK:
+        return syscall_fork();
+
     default:
         panic("Unexpected system call %ld!\n", regs->reg_rax);
 
@@ -359,6 +363,45 @@ int syscall_page_alloc(uintptr_t addr) {
     }
 }
 
+// syscall_fork()
+//    Handles the SYSCALL_FORK system call.
+pid_t syscall_fork() {
+    
+    // find a free process slot
+    pid_t child = -1;
+    for (int i = 1; i < NPROC; i++) {
+        if (ptable[i].state == P_FREE) {
+            child = i;
+            break;
+        }
+    }
+
+    if (child < 1) {
+        // no slot for process exists
+        return -1;
+    }
+
+    // set child state, regs, and alloc a new pagetable
+    ptable[child].state = P_RUNNABLE;
+    ptable[child].regs = current->regs;
+    ptable[child].regs.reg_rax = 0;
+    ptable[child].pagetable = kalloc_pagetable();
+
+    // map or copy memory for child process
+    for (vmiter parent_it(current->pagetable); 
+         parent_it.va() < MEMSIZE_VIRTUAL;
+         parent_it += PAGESIZE) {
+        if (parent_it.va() < PROC_START_ADDR) {
+            vmiter(ptable[child].pagetable, parent_it.va()).map(parent_it.kptr(), parent_it.perm());
+        } else if (parent_it.present() && parent_it.user()) {
+            void* page = kalloc(PAGESIZE);
+            memcpy(page, parent_it.kptr(), PAGESIZE);
+            vmiter(ptable[child].pagetable, parent_it.va()).map(page, parent_it.perm());
+        }
+    }
+    
+    return child;
+}
 
 // schedule
 //    Pick the next process to run and then run it.
